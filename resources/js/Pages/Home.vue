@@ -7,6 +7,7 @@ import { onMounted, ref, watch } from "vue";
 import { router } from "@inertiajs/vue3";
 import { initFlowbite } from "flowbite";
 import debounce from "lodash/debounce";
+
 const props = defineProps({
     posts: Object,
     categories: Object,
@@ -14,28 +15,28 @@ const props = defineProps({
 });
 
 let filter = ref(
-    props.filters?.category["category"]
+    props.filters?.categoryId
         ? {
-              label: props.filters?.category["category"],
-              name: props.filters?.category["category"],
+              label: props.filters?.categoryId["categoryId"],
+              id: props.filters?.categoryId["categoryId"],
           }
-        : { label: "All", name: "" }
+        : { label: "All", id: "" }
 );
 
-let search = ref(props.filters?.search["search"] ?? "");
+let searchPhrase = ref(props.filters?.searchPhrase ?? "");
 
 function filterCategory(category) {
     filter.value = {
         label: category.label ?? category.name,
-        name: category.name,
+        id: category.id,
     };
 }
 watch(
-    [filter, search],
+    [filter, searchPhrase],
     debounce(([newFilter, newSearch]) => {
         router.get(
             "/",
-            { category: newFilter.name, search: newSearch },
+            { categoryId: newFilter.id, searchPhrase: newSearch },
             { preserveState: true }
         );
     }, 500)
@@ -49,7 +50,7 @@ onMounted(() => {
 <template>
     <div class="max-w-7xl mx-auto p-4">
         <PageTitle>Home</PageTitle>
-       
+
         <div class="flex h-12 justify-between">
             <SubTitle>Posts</SubTitle>
             <div class="flex gap-x-3 items-center">
@@ -78,7 +79,7 @@ onMounted(() => {
                         id="default-search"
                         class="block w-full p-3 ps-10 text-sm text-gray-900 border border-gray-300 rounded-lg bg-gray-50 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
                         placeholder="Search..."
-                        v-model="search"
+                        v-model="searchPhrase"
                     />
                 </div>
 
@@ -118,13 +119,14 @@ onMounted(() => {
                         aria-labelledby="dropdownDefaultButton"
                     >
                         <li
-                            @click="filterCategory({ label: 'All', name: '' })"
+                            @click="filterCategory({ label: 'All', id: '' })"
                             class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
                         >
                             All
                         </li>
                         <li
                             v-for="category in categories"
+                            :key="category.id"
                             @click="filterCategory(category)"
                             class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
                         >
@@ -136,7 +138,7 @@ onMounted(() => {
         </div>
 
         <div class="flex gap-4 flex-wrap justify-center mt-4">
-            <PostCard v-for="post in posts?.data" :post="post" />
+            <PostCard v-for="post in posts?.data" :key="post.id" :post="post" />
         </div>
         <Pagination :links="posts?.links" />
     </div>

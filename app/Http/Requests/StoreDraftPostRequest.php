@@ -2,13 +2,13 @@
 
 namespace App\Http\Requests;
 
+use GuzzleHttp\Psr7\UploadedFile;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rules\File;
 
-use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Validator;
-
-class StorePostRequest extends FormRequest
+class StoreDraftPostRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -27,9 +27,9 @@ class StorePostRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'title' => ['required'],
-            'content' => ['required',],
-            'category' => ['required', 'exists:categories,id'],
+            'title' => ['sometimes'],
+            'content' => ['sometimes',],
+            'category' => ['sometimes', 'nullable', 'exists:categories,id'],
             'image' => ['nullable', 'sometimes', function ($attribute, $value, $fail) {
                 if (is_string($value) && !is_file($value)) {
                     return;
@@ -44,5 +44,18 @@ class StorePostRequest extends FormRequest
                 $fail("Error On Image...");
             }],
         ];
+    }
+
+    public function withValidator($validator)
+    {
+        $validator->after(function ($validator) {
+            $nonEmptyFields = array_filter($this->only(['title', 'content', 'category', 'image']), function ($value) {
+                return !is_null($value) && $value !== '';
+            });
+
+            if (empty($nonEmptyFields)) {
+                $validator->errors()->add('main', 'At least one field must be provided to store a draft.');
+            }
+        });
     }
 }
