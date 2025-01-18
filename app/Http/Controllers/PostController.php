@@ -5,29 +5,27 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StorePostRequest;
 use App\Http\Requests\UpdatePostRequest;
 use App\Http\Requests\StoreDraftPostRequest;
-use App\Models\Category;
-use App\Models\CategoryPost;
+use App\Http\Requests\UpdateDraftPostRequest;
 use App\Models\Post;
 use App\Models\User;
+use App\Services\CategoryService;
 use App\Services\PostService;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
-use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Validator;
 use Inertia\Inertia;
-use Illuminate\Support\Str;
-use Illuminate\Validation\Rules\File;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 class PostController extends Controller
 {
 
     protected $postService;
+    protected $categoryService;
 
     public function __construct(
-        PostService $postService
+        PostService $postService,
+        CategoryService $categoryService
     ) {
         $this->postService = $postService;
+        $this->categoryService = $categoryService;
     }
 
     public function index(Request $request)
@@ -38,7 +36,7 @@ class PostController extends Controller
         ];
 
         $posts = $this->postService->activePosts(searchPhrase: $filters['searchPhrase'], categoryId: $filters['categoryId'], paginate: 10);
-        $categories = Category::all();
+        $categories = $this->categoryService->allCategories();
 
         return Inertia::render('Home', [
             "posts" => $posts,
@@ -61,7 +59,7 @@ class PostController extends Controller
 
     public function create()
     {
-        $categories = Category::all();
+        $categories = $this->categoryService->allCategories();
 
         return Inertia::render('Post/Create', [
             "categories" => $categories,
@@ -84,7 +82,7 @@ class PostController extends Controller
         $postAttributes = $request->validated();
 
         $user = $request->user();
-        $post = $this->postService->createPost($user, [...$postAttributes, 'draft' => true]);
+        $post = $this->postService->createPost($user, $postAttributes, draft: true);
 
         return redirect("/post/{$post->id}");
     }
@@ -107,55 +105,21 @@ class PostController extends Controller
 
     public function edit(Post $post)
     {
-        //
-        // dd($post);
         return Inertia::render('Post/Edit', [
             "post" => $post->only(['id', 'title', 'content', 'categories', 'image', 'draft']),
-            "categories" => Category::all(),
+            "categories" => $this->categoryService->allCategories(),
 
         ]);
     }
 
-    public function publish(Request $request, Post $post)
+    public function editDraft(UpdateDraftPostRequest $request, Post $post)
     {
+        $postAttributes = $request->validated();
 
-        $validatedData = $request->validate([
-            'title' => ['required', 'string', 'max:255'],
-            'content' => ['required', 'string'],
-            'category' => ['required', 'exists:categories,id'],
-            'image' => ['nullable', 'sometimes', function ($attribute, $value, $fail) {
-                if (is_string($value) && !is_file($value)) {
-                    return;  // Allow string paths for existing images
-                }
-                // Apply file validation only for new uploads
-                if ($value instanceof UploadedFile) {
-                    return Validator::make(
-                        [$attribute => $value],
-                        [$attribute => File::types(['jpg', 'jpeg', 'png', 'svg'])->max(2048)]
-                    )->validate();
-                }
-                $fail("Error On Image...");
-            }],
-        ]);
+        $request->hasFile('image') ? $image = $request->file('image') : $image = null;
+        $request->category ?  $category = $request->category : $category = null;
 
-        if ($request->hasFile('image')) {
-            $validatedData['image'] = $request->file('image')->store('images', 'public');
-        }
-
-        // Update categories
-        if ($request->category) {
-            CategoryPost::where('post', $post->id)->delete();
-            CategoryPost::create([
-                'post' => $post->id,
-                'category' => $request->category
-            ]);
-        }
-
-        // Update post and set draft to false
-        $post->update([
-            ...$validatedData,
-            'draft' => false
-        ]);
+        $this->postService->updatePost($post, $postAttributes, $category, true, $image);
 
         return redirect("/post/$post->id");
     }
@@ -163,33 +127,19 @@ class PostController extends Controller
 
     public function update(UpdatePostRequest $request, Post $post)
     {
-        if ($post->draft) {
-            return $this->publish($request, $post);
-        }
-
         $postAttributes = $request->validated();
 
-        if ($request->hasFile('image')) $postAttributes['image'] = $request->file('image')->store('posts', 'public');
-        if ($request->category) {
-            CategoryPost::where('post', $post->id)->delete();
+        $request->hasFile('image') ? $image = $request->file('image') : $image = null;
+        $request->category ?  $category = $request->category : $category = null;
 
-            CategoryPost::create([
-                'post' => $post->id,
-                'category' => $request->category
-            ]);
-        }
-
-        $post->update($postAttributes);
+        $this->postService->updatePost($post, $postAttributes, $category, false, $image);
 
         return redirect("/post/$post->id");
     }
 
     public function destroy(Post $post)
     {
-        //
-        $post->update([
-            "deleted" => true
-        ]);
+        $this->postService->deletePost($post);
         return redirect("/");
     }
 }

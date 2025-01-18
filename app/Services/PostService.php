@@ -4,12 +4,10 @@ namespace App\Services;
 
 use App\Models\CategoryPost;
 use App\Models\Post;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use illuminate\Support\Str;
-use InvalidArgumentException;
-
-use function Pest\Laravel\get;
 
 class PostService
 {
@@ -48,7 +46,16 @@ class PostService
                 'canEdit' => Auth::user()?->can('update', $post),
                 'canDelete' => Auth::user()?->can('delete', $post),
                 'draft' => $post->draft,
-            ]
+            ],
+            'admin' => [
+                'id' => $post->id,
+                'title' => $post->title,
+                'excerpt' => Str::limit($post->content, 50),
+                'authorName' => $post->author->name,
+                'draft' => $post->draft,
+                'views' => $post->views,
+                'deleted' => $post->deleted,
+            ],
         ];
 
         return $formateOptions[$formate];
@@ -60,7 +67,8 @@ class PostService
         $paginate = null,
         $limit = null,
         $orderBy = 'created_at',
-        $sort = 'desc'
+        $sort = 'desc',
+        $active = true
     ) {
 
         $query = Post::query()
@@ -73,7 +81,7 @@ class PostService
             ->whereHas('author', function ($query) {
                 $query->where('deleted', false);
             })
-            ->where('deleted', false)
+            ->where('deleted', !$active)
             ->where('draft', false)
             ->orderBy($orderBy, $sort);
 
@@ -102,7 +110,8 @@ class PostService
         $limit = null,
         $orderBy = 'created_at',
         $sort = 'desc',
-        $relatedToPost = null
+        $relatedToPost = null,
+        $active = true
     ) {
         $conditions = [];
 
@@ -147,17 +156,18 @@ class PostService
             paginate: $paginate,
             limit: $limit,
             orderBy: $orderBy,
-            sort: $sort
+            sort: $sort,
+            active: $active
         );
     }
 
-    public function createPost($user = null, $postAttributes = null)
+    public function createPost($user = null, $postAttributes = null, $draft = false)
     {
         $post = $user->posts()->create([
             'title' => $postAttributes['title'],
             'content' => $postAttributes['content'],
             'image' => $postAttributes['image'] ? $postAttributes['image']->store('images', 'public') : null,
-            'draft' => $postAttributes['draft'] ?? false,
+            'draft' => $postAttributes['draft'] ?? $draft,
         ]);
 
         $postAttributes['category'] ? CategoryPost::create([
@@ -166,6 +176,24 @@ class PostService
         ]) : null;
 
         return $post;
+    }
+
+    public function updatePost(Post $post, $postAttributes = null, $category = null, $draft = false, $image = null)
+    {
+        if ($image) $postAttributes['image'] = $image->store('images', 'public');
+
+        if ($category) {
+            CategoryPost::where('post', $post->id)->delete();
+            CategoryPost::create([
+                'post' => $post->id,
+                'category' => $category
+            ]);
+        }
+
+        $post->update([
+            ...$postAttributes,
+            'draft' => $draft
+        ]);
     }
 
     public function incrementViews(Request $request, Post $post)
@@ -182,5 +210,29 @@ class PostService
         $categoryIds = collect($post['categories'])->pluck('id');
 
         return $this->activePosts(relatedToPost: ['authorId' => $authorId, 'categoryIds' => $categoryIds, 'postId' => $post->id], limit: 4);
+    }
+
+    public function deletePost(Post $post)
+    {
+        $post->update([
+            "deleted" => true
+        ]);
+    }
+
+    public function restorePost(Post $post)
+    {
+        $post->update([
+            "deleted" => false
+        ]);
+    }
+
+    public function userPostCount(User $user, $active)
+    {
+        return Post::where('user_id', $user->id)->where('deleted', false)->where('draft', !$active)->count();
+    }
+
+    public function userPostViews(User $user, $active)
+    {
+        return Post::where('user_id', $user->id)->where('deleted', false)->where('draft', !$active)->sum('views');
     }
 }

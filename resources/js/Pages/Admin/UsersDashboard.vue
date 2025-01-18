@@ -231,7 +231,10 @@ const tableHead = ["Name", "Email", "Verified", "Admin", "Edit", "Delete"];
                                         label="Name"
                                         placeholder="example name"
                                         v-model="form.name"
-                                        :error="form.errors.name"
+                                        :error="
+                                            form.errors.name ||
+                                            $page.props.errors.name
+                                        "
                                     />
                                 </div>
                                 <div>
@@ -241,7 +244,10 @@ const tableHead = ["Name", "Email", "Verified", "Admin", "Edit", "Delete"];
                                         label="Email"
                                         placeholder="example@email.com"
                                         v-model="form.email"
-                                        :error="form.errors.email"
+                                        :error="
+                                            form.errors.email ||
+                                            $page.props.errors.email
+                                        "
                                     />
                                 </div>
                                 <div>

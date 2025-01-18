@@ -123,10 +123,8 @@ const tableHead = [
                                             ? 'delete'
                                             : 'patch',
                                         body: !post.deleted
-                                            ? `Delete
-                                        `
-                                            : `Restore
-                                        `,
+                                            ? `Delete`
+                                            : `Restore`,
                                         classCondition: !post.deleted,
                                         classTrue:
                                             'font-medium text-red-600 dark:text-red-500 hover:underline',

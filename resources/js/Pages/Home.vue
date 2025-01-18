@@ -7,6 +7,8 @@ import { onMounted, ref, watch } from "vue";
 import { router } from "@inertiajs/vue3";
 import { initFlowbite } from "flowbite";
 import debounce from "lodash/debounce";
+import SuccessAlert from "../Shared/SuccessAlert.vue";
+import DangerAlert from "../Shared/DangerAlert.vue";
 
 const props = defineProps({
     posts: Object,
@@ -50,7 +52,14 @@ onMounted(() => {
 <template>
     <div class="max-w-7xl mx-auto p-4">
         <PageTitle>Home</PageTitle>
-
+        <DangerAlert
+            v-if="$page.props.errors['main']"
+            :errorMessage="$page.props.errors['main']"
+        />
+        <SuccessAlert
+            v-if="$page.props.flash.message"
+            :errorMessage="$page.props.flash.message"
+        />
         <div class="flex h-12 justify-between">
             <SubTitle>Posts</SubTitle>
             <div class="flex gap-x-3 items-center">

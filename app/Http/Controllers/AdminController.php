@@ -2,9 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreCategoryRequest;
+use App\Http\Requests\UpdateCategoryRequest;
+use App\Http\Requests\UpdateUserRequest;
 use App\Models\Category;
 use App\Models\Post;
 use App\Models\User;
+use App\Services\CategoryService;
+use App\Services\PostService;
+use App\Services\UserService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Str;
@@ -12,7 +18,21 @@ use Illuminate\Support\Str;
 
 class AdminController extends Controller
 {
-    //
+
+    protected $postService;
+    protected $categoryService;
+    protected $userService;
+
+    public function __construct(
+        PostService $postService,
+        CategoryService $categoryService,
+        UserService $userService
+    ) {
+        $this->postService = $postService;
+        $this->categoryService = $categoryService;
+        $this->userService = $userService;
+    }
+
     public function index(Request $request)
     {
         return Inertia::render('Admin/Index');
@@ -22,84 +42,17 @@ class AdminController extends Controller
     {
         $deleted = filter_var($request->input('deleted') || false, FILTER_VALIDATE_BOOLEAN);
 
-        $users = User::where('deleted', $deleted)->get()->map(function ($user) {
-            return [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-                'verified' => $user->hasVerifiedEmail(),
-                'admin' => $user->is_admin,
-                'deleted' => $user->deleted,
-            ];
-        });
+        $users = $this->userService->getUsers($deleted);
 
         return Inertia::render('Admin/UsersDashboard', ['users' => $users]);
     }
 
-    public function categoriesIndex(Request $request)
+
+    public function editUser(UpdateUserRequest $request, User $user)
     {
-        $deleted = filter_var($request->input('deleted') || false, FILTER_VALIDATE_BOOLEAN);
-        $categories = Category::where('deleted', $deleted)->orderBy('created_at', 'desc')->get();
+        $userAttributes = $request->validated();
 
-        return Inertia::render('Admin/CategoriesDashboard', ['categories' => $categories]);
-    }
-
-    public function postsIndex(Request $request)
-    {
-        $deleted = filter_var($request->input('deleted') || false, FILTER_VALIDATE_BOOLEAN);
-        $posts = Post::query()
-            ->with('author')
-            ->where('deleted', $deleted)
-            ->orderBy('created_at', 'desc')
-            ->get()
-            ->map(function ($post) {
-                return [
-                    'id' => $post->id,
-                    'title' => $post->title,
-                    'excerpt' => Str::limit($post->content, 50),
-                    'authorName' => $post->author->name,
-                    'draft' => $post->draft,
-                    'views' => $post->views,
-                    'deleted' => $post->deleted,
-                ];
-            });
-
-        return Inertia::render('Admin/PostsDashboard', ['posts' => $posts]);
-    }
-
-    public function categoriesCreate(Request $request)
-    {
-        return Inertia::render('Admin/CreateCategories');
-    }
-
-    public function categoriesStore(Request $request)
-    {
-        $userAttributes = $request->validate([
-            'name' => ['required', 'min:3'],
-            'description' => ['required', 'min:10'],
-        ]);
-
-        Category::create($userAttributes);
-
-        return redirect('/admin/categories')->with('message', 'Category Added successfully!');
-    }
-
-    public function editUser(Request $request, User $user)
-    {
-
-        $userAttributes = $request->all();
-
-        if (empty($userAttributes) || count(array_filter($userAttributes, fn($value) => !is_null($value))) === 0) {
-            return redirect()->back()->withErrors(['userUpdate' => "Changes Must be Valid"]);
-        }
-
-
-        $user->update([
-            'name' => $userAttributes['name'] ?? $user->name,
-            'email' => $userAttributes['email'] ?? $user->email,
-            'is_admin' => $userAttributes['is_admin'] ?? $user->is_admin,
-        ]);
-
+        $this->userService->updateUser($user, $userAttributes);
 
         return redirect()->back()->with('message', 'User updated successfully!');
     }
@@ -107,61 +60,84 @@ class AdminController extends Controller
     public function deleteUser(Request $request, User $user)
     {
         if ($request->user()->id === $user->id) return redirect()->back()->withErrors(["main" => "You Cannot Delete Your own admin account"]);
-        $user->update(['deleted' => true]);
+        $this->userService->deleteUser($user);
 
         return redirect()->back()->with('message', 'User updated successfully!');;
     }
 
     public function restoreUser(User $user)
     {
-        $user->update(['deleted' => false]);
+        $this->userService->restoreUser($user);
 
         return redirect()->back()->with('message', 'User updated successfully!');
     }
 
-    public function editCategory(Request $request, Category $category)
+    public function postsIndex(Request $request)
     {
-        $userAttributes = $request->all();
+        $deleted = filter_var($request->input('deleted') || false, FILTER_VALIDATE_BOOLEAN);
+        $posts = $this->postService->activePosts(active: !$deleted, formate: 'admin');
 
-        if (empty($userAttributes) || count(array_filter($userAttributes, fn($value) => !is_null($value))) === 0) {
-            return redirect()->back()->withErrors(['categoryUpdate' => "Changes Must be Valid"]);
-        }
-
-
-        $category->update([
-            'name' => $userAttributes['name'] ?? $category->name,
-            'description' => $userAttributes['description'] ?? $category->description,
-        ]);
-
-
-        return redirect()->back()->with('message', 'Category updated successfully!');
+        return Inertia::render('Admin/PostsDashboard', ['posts' => $posts]);
     }
 
-    public function deleteCategory(Category $category)
-    {
-        $category->update(['deleted' => true]);
-
-        return redirect()->back()->with('message', 'Category updated successfully!');;
-    }
-
-    public function restoreCategory(Category $category)
-    {
-        $category->update(['deleted' => false]);
-
-        return redirect()->back()->with('message', 'Category updated successfully!');
-    }
 
     public function deletePost(Post $post)
     {
-        $post->update(['deleted' => true]);
+        $this->postService->deletePost($post);
 
         return redirect()->back()->with('message', 'Post updated successfully!');;
     }
 
     public function restorePost(Post $post)
     {
-        $post->update(['deleted' => false]);
+        $this->postService->restorePost($post);
 
         return redirect()->back()->with('message', 'Post updated successfully!');
+    }
+
+    public function categoriesCreate(Request $request)
+    {
+        return Inertia::render('Admin/CreateCategories');
+    }
+
+    public function categoriesIndex(Request $request)
+    {
+        $deleted = filter_var($request->input('deleted') || false, FILTER_VALIDATE_BOOLEAN);
+        $categories = $this->categoryService->getCategories($deleted);
+
+        return Inertia::render('Admin/CategoriesDashboard', ['categories' => $categories]);
+    }
+
+
+    public function categoriesStore(StoreCategoryRequest $request)
+    {
+        $categoryAttributes = $request->validated();
+
+        $this->categoryService->createCategory($categoryAttributes);
+
+        return redirect('/admin/categories')->with('message', 'Category Added successfully!');
+    }
+
+    public function editCategory(UpdateCategoryRequest $request, Category $category)
+    {
+        $categoryAttributes = $request->validated();
+
+        $this->categoryService->updateCategory($category, $categoryAttributes);
+
+        return redirect()->back()->with('message', 'Category updated successfully!');
+    }
+
+    public function deleteCategory(Category $category)
+    {
+        $this->categoryService->deleteCategory($category);
+
+        return redirect()->back()->with('message', 'Category deleted successfully!');;
+    }
+
+    public function restoreCategory(Category $category)
+    {
+        $this->categoryService->restoreCategory($category);
+
+        return redirect()->back()->with('message', 'Category restored successfully!');
     }
 }

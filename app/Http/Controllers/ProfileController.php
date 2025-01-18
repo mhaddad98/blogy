@@ -2,16 +2,17 @@
 
 namespace App\Http\Controllers;
 
-use App\Mail\Otp as MailOtp;
 use App\Models\Otp;
 use App\Models\PasswordResetToken;
-use App\Models\Post;
 use App\Models\User;
+use App\Services\CategoryService;
+use App\Services\EmailService;
+use App\Services\OtpService;
+use App\Services\PostService;
+use App\Services\UserService;
 use Exception;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
 use Inertia\Inertia;
 use Illuminate\Validation\Rules\Password;
@@ -21,41 +22,36 @@ use Illuminate\Support\Str;
 
 class ProfileController extends Controller
 {
-    //
+    protected $postService;
+    protected $categoryService;
+    protected $otpService;
+    protected $userService;
+    protected $emailService;
+
+    public function __construct(
+        PostService $postService,
+        CategoryService $categoryService,
+        OtpService $otpService,
+        UserService $userService,
+        EmailService $emailService,
+    ) {
+        $this->postService = $postService;
+        $this->categoryService = $categoryService;
+        $this->otpService = $otpService;
+        $this->userService = $userService;
+        $this->emailService = $emailService;
+    }
     public function index(Request $request)
     {
-
         $user = $request->user();
-        $tab = $request->input('tab');
-        $filter = $tab == 'draft';
+        $active = $request->input('tab') != 'draft';
 
-        $AP = Post::where('user_id', $user->id)->where('deleted', false)->where('draft', false);
-        $activePosts = $AP->count();
-        $draftPosts = Post::where('user_id', $user->id)->where('deleted', false)->where('draft', true)->count();
-        $totalViews = $AP->sum('views');
+        $posts = $this->postService->activePosts(userId: $user->id, active: $active, paginate: 10);
 
-        $posts = Post::with('author', 'categories')
-            ->where('user_id', $user->id)
-            ->where('deleted', false)
-            ->where('draft', $filter)
-            ->orderBy('created_at', 'desc')
-            ->paginate(10)
-            ->withQueryString()
-            ->through(function ($post) {
-                return [
-                    'id' => $post->id,
-                    'title' => $post->title,
-                    'excerpt' => Str::limit($post->content, 50),
-                    'authorName' => $post->author->name,
-                    'authorId' => $post->author->id,
-                    'image' => $post->image,
-                    'categories' => $post->categories->map(fn($category) => [
-                        'name' => $category->name,
-                        'id' => $category->id
-                    ]),
-                    'date' => $post->created_at->format('Y-m-d'),
-                ];
-            });
+        $activePosts = $this->postService->userPostCount($user, true);
+        $draftPosts = $this->postService->userPostCount($user, false);
+
+        $totalViews = $this->postService->userPostViews($user, true);
         return Inertia::render('Profile/Index', [
             'user' => [
                 'name' => $user->name,
@@ -88,41 +84,28 @@ class ProfileController extends Controller
         ]);
 
         $authUser = $request->user();
-        $otp = Otp::where('user_id', $authUser->id)->orderBy('created_at', 'desc')->get()->first();
+        $otp = $this->otpService->verifyOtp($userAttributes['otp'], $authUser->id);
 
-        if (!$otp || !$otp->valid || $otp->value !== $userAttributes['otp']) {
-            return redirect()->back()->withErrors(["main" => "Invalid OTP"]);
-        }
+        if (!$otp['valid']) return redirect()->back()->withErrors(["main" => "Invalid OTP"]);
 
-        $authUser->update(['email_verified_at' => now()]);
-        $otp->update(['valid' => false]);
-
+        $this->userService->verifyUserEmail($authUser);
+        $this->otpService->invalidateOtp($otp['otp']);
 
         return redirect('/profile')->with(["message" => "Email Verified Successfully"]);
     }
 
-    public function sendOtpEmail($email, $name, $otp)
-    {
-        Mail::to($email)->send(
-            new MailOtp($name, $otp)
-        );
-    }
-
-
     public function sendCode(Request $request)
     {
-        $otp = Str::random(6);
+        $otp = $this->otpService->generate();
 
         $authUser = $request->user();
 
-        $savedOtp = $authUser->otps()->create([
-            'value' => $otp,
-        ]);
+        $savedOtp = $this->userService->createUserOtp($authUser, $otp);
 
         try {
-            $this->sendOtpEmail($authUser->email, $authUser->name, $otp);
+            $this->emailService->sendOtp($authUser->email, $authUser->name, $otp);
         } catch (Exception $e) {
-            $savedOtp->update(['valid' => false]);
+            $this->otpService->invalidateOtp($savedOtp);
             return redirect()->back()->withErrors(["main" => "Server Error Try Again later"]);
         };
 
@@ -139,21 +122,17 @@ class ProfileController extends Controller
             'password' => ['required', 'confirmed', Password::min(8)]
         ]);
 
+        $result = $this->userService->changeUserPassword(
+            $user,
+            $userAttributes['current'],
+            $userAttributes['password']
+        );
 
-        if (!Hash::check($userAttributes['current'], $user->password)) {
-            return redirect()->back()->withErrors(['main' => 'please Provide Correct Current Password.']);
+        if (!$result['success']) {
+            return redirect()->back()->withErrors(['main' => $result['message']]);
         }
 
-        if ($userAttributes['current'] == $userAttributes['password']) {
-            return redirect()->back()->withErrors(['main' => 'please Provide New Password.']);
-        }
-
-
-        $user->update([
-            'password' => $userAttributes['password']
-        ]);
-
-        return redirect('/');
+        return redirect('/')->with('message', $result['message']);
     }
 
     public function resetShow()
@@ -170,19 +149,14 @@ class ProfileController extends Controller
         $user = User::where('email', $email)->get()->first();
         if (!$user || $user->deleted) return redirect()->back()->withErrors(['main' => 'Invalid Email']);
 
-
-        $otp = Str::random(6);
-
+        $otp = $this->otpService->generate();
 
 
-        $savedOtp = $user->otps()->create([
-            'value' => $otp,
-        ]);
-
+        $savedOtp = $this->userService->createUserOtp($user, $otp);
         try {
-            $this->sendOtpEmail($email, $user->name, $otp);
+            $this->emailService->sendOtp($email, $user->name, $otp);
         } catch (Exception $e) {
-            $savedOtp->update(['valid' => false]);
+            $this->otpService->invalidateOtp($savedOtp);
             return redirect()->back()->withErrors(["main" => "Server Error Try Again later"]);
         };
 
@@ -196,14 +170,14 @@ class ProfileController extends Controller
             'email' => ['required', 'email'],
         ]);
 
-        $user = User::where('email', $userAttributes['email'])->get()->first();
-        $otp = Otp::where('user_id', $user->id)->orderBy('created_at', 'desc')->get()->first();
+        $user = $this->userService->getUserByEmail($userAttributes['email']);
+        $otp = $this->otpService->getLatestOtp($user->id);
 
-        if (!$otp || !$otp->valid || $otp->value !== $userAttributes['otp']) {
-            return redirect()->back()->withErrors(["main" => "Invalid OTP"]);
-        }
+        $otp = $this->otpService->verifyOtp($userAttributes['otp'], $user->id);
 
-        $otp->update(['valid' => false]);
+        if (!$otp['valid']) return redirect()->back()->withErrors(["main" => "Invalid OTP"]);
+
+        $this->otpService->invalidateOtp($otp['otp']);
 
         $token = hash('sha256', Str::random(32));
         PasswordResetToken::create([

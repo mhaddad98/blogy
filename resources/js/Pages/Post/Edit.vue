@@ -41,25 +41,23 @@ const original = {
 
 const preview = ref<string | null>(null);
 
-function publish() {
-    form.draft = false;
-    submit();
-}
-
-function submit() {
+function editDraft() {
     const changes = {};
+
     for (const key in original) {
-        if (form[key] !== original[key]) {
+        if (form[key] != original[key]) {
             changes[key] = form[key];
         }
     }
-    if (form.draft === false && "draft" in changes) {
-        return form.post(`/post/${props.post?.id}/edit`);
-    } else {
-        router.post(`/post/${props.post?.id}/edit`, {
-            ...changes,
-        });
-    }
+    console.log(changes);
+
+    return router.post(`/post/${props.post?.id}/edit/draft`, {
+        ...changes,
+    });
+}
+
+function submit() {
+    return form.post(`/post/${props.post?.id}/edit`);
 }
 
 function handleFileChange(event: Event) {
@@ -224,9 +222,9 @@ function handleFileChange(event: Event) {
                     </div>
                     <div class="flex gap-3">
                         <button
-                            v-if="post.draft"
+                            v-if="post?.draft"
                             type="button"
-                            @click="publish"
+                            @click="submit"
                             class="text-white bg-green-700 hover:bg-green-800 focus:ring-4 focus:outline-none focus:ring-green-300 font-medium rounded-lg text-sm w-full sm:w-auto px-5 py-2.5 text-center dark:bg-green-600 dark:hover:bg-green-700 dark:focus:ring-blue-800"
                         >
                             Publish
@@ -237,6 +235,14 @@ function handleFileChange(event: Event) {
                             class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm w-full sm:w-auto px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800"
                         >
                             Edit
+                        </button>
+                        <button
+                            v-if="post?.draft"
+                            type="button"
+                            @click="editDraft"
+                            class="text-white bg-yellow-700 hover:bg-yellow-800 focus:ring-4 focus:outline-none focus:ring-yellow-300 font-medium rounded-lg text-sm w-full sm:w-auto px-5 py-2.5 text-center dark:bg-yellow-600 dark:hover:bg-yellow-700 dark:focus:ring-blue-800"
+                        >
+                            Edit Draft
                         </button>
                         <Link
                             :href="`/post/${post?.id}`"

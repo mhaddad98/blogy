@@ -13,8 +13,8 @@ defineProps({
     category: Object,
     postsCount: Number,
 });
-function sort(sort) {
-    router.get(page.url, { sort });
+function orderBy(orderBy) {
+    router.get(page.url, { orderBy });
 }
 onMounted(() => {
     initFlowbite();
@@ -116,7 +116,7 @@ onMounted(() => {
                             class="text-black border min-w-44 justify-between border-blue-200 hover:border-blue-800 focus:ring-1 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center inline-flex items-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800"
                             type="button"
                         >
-                            Sort
+                            orderBy
                             <svg
                                 class="w-2.5 h-2.5 ms-3"
                                 aria-hidden="true"
@@ -145,13 +145,13 @@ onMounted(() => {
                             aria-labelledby="dropdownDefaultButton"
                         >
                             <li
-                                @click="sort('created_at')"
+                                @click="orderBy('created_at')"
                                 class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
                             >
                                 Date
                             </li>
                             <li
-                                @click="sort('views')"
+                                @click="orderBy('views')"
                                 class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
                             >
                                 Popularity

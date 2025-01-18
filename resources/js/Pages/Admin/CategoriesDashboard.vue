@@ -226,7 +226,10 @@ const tableHead = ["Name", "Description", "Edit", "Delete"];
                                         label="Name"
                                         placeholder="example name"
                                         v-model="form.name"
-                                        :error="form.errors.name"
+                                        :error="
+                                            form.errors.name ||
+                                            $page.props.errors.name
+                                        "
                                     />
                                 </div>
                                 <div>
@@ -236,7 +239,10 @@ const tableHead = ["Name", "Description", "Edit", "Delete"];
                                         label="Description"
                                         placeholder="Description"
                                         v-model="form.description"
-                                        :error="form.errors.description"
+                                        :error="
+                                            form.errors.description ||
+                                            $page.props.errors.description
+                                        "
                                     />
                                 </div>
                             </div>

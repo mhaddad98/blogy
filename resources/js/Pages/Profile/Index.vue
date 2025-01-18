@@ -15,7 +15,7 @@ defineProps({
     posts: Object,
     activePosts: Number || String,
     draftPosts: Number || String,
-    totalViews: Number || String,
+    totalViews: String,
 });
 
 const tabs: Tab[] = [
