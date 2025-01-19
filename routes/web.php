@@ -38,6 +38,8 @@ Route::middleware('guest')->group(function () {
 Route::delete('/logout', [SessionController::class, 'destroy'])->middleware('auth');
 
 
+Route::get('/post/{post}', [PostController::class, 'show']);
+
 Route::middleware('auth')->group(function () {
     Route::get('/post/create', [PostController::class, 'create']);
     Route::post('/post', [PostController::class, 'store']);
@@ -47,7 +49,6 @@ Route::middleware('auth')->group(function () {
     Route::get('/post/user/{user}', [PostController::class, 'userPosts']);
     Route::delete('/post/{post}', [PostController::class, 'destroy']);
 
-    Route::get('/post/{post}', [PostController::class, 'show']);
 
     Route::get('/post/{post}/edit', [PostController::class, 'edit'])->can('update', 'post');
     Route::post('/post/{post}/edit', [PostController::class, 'update'])->can('update', 'post');
